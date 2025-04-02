@@ -14,7 +14,7 @@ recognizer = sr.Recognizer()
 engine = pyttsx3.init()
 
 # Gemini API Configuration
-GEMINI_API_KEY = "AIzaSyCsSapWeuOe7psNqDL4GaRrLJIgvYvoKqA"
+GEMINI_API_KEY = "Gemini-API-key"
 configure(api_key=GEMINI_API_KEY)
 model = GenerativeModel("gemini-2.0-flash")
 
