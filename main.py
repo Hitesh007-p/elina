@@ -1,121 +1,163 @@
+import os
+import sys
 import speech_recognition as sr
 import webbrowser
 import pyttsx3
-import musicLibrary
-from google.generativeai import configure, GenerativeModel
 from gtts import gTTS
 import pygame
-import os
 import pyautogui
 
+# Gemini API
+from google.generativeai import configure, GenerativeModel
 
-# Initialize recognizer and text-to-speech engine
+# Try importing musicLibrary
+try:
+    import musicLibrary
+except ImportError:
+    musicLibrary = None
+
+# --- Setup ---
 recognizer = sr.Recognizer()
 engine = pyttsx3.init()
 
-# Gemini API Configuration
+# Gemini API Key
 GEMINI_API_KEY = "AIzaSyCsSapWeuOe7psNqDL4GaRrLJIgvYvoKqA"
 configure(api_key=GEMINI_API_KEY)
-model = GenerativeModel("gemini-2.0-flash")
+model = GenerativeModel("gemini-1.5-flash")
 
-# Initialize pygame mixer
+# Init mixer
 
 
 def init_mixer():
-    pygame.mixer.init()
+    try:
+        pygame.mixer.init()
+    except Exception:
+        pygame.quit()
+        pygame.mixer.init()
+
+# AI short response generator
 
 
 def ai_process(command):
-    """Handle commands using Gemini API with short responses"""
     try:
-        modified_prompt = f"Respond very briefly (2-3 sentences max): {command}"
-        response = model.generate_content(
-            modified_prompt,
-            generation_config={"max_output_tokens": 200}
-        )
-        return response.text if hasattr(response, 'text') else "I'll keep it short: Can't process that."
+        prompt = f"Answer in 2-3 short sentences: {command}"
+        response = model.generate_content(prompt, generation_config={
+                                          "max_output_tokens": 200})
+        return response.text if hasattr(response, 'text') else "Sorry, I couldn't process that."
     except Exception as e:
-        print(f"API Error: {e}")
-        return "Brief update: Error occurred."
+        print("Gemini API Error:", e)
+        return "Oops! Something went wrong with AI."
+
+# Speak using gTTS
 
 
 def speak(text):
-    """Improved text-to-speech function using gTTS"""
-    tts = gTTS(text=text, lang='en')
-    tts.save('temp.mp3')
+    try:
+        tts = gTTS(text=text, lang='en')
+        tts.save('temp.mp3')
+        init_mixer()
+        pygame.mixer.music.load('temp.mp3')
+        pygame.mixer.music.play()
 
-    init_mixer()
-    pygame.mixer.music.load('temp.mp3')
-    pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
 
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
+        pygame.mixer.music.unload()
+        os.remove("temp.mp3")
+    except Exception as e:
+        print("Speech Error:", e)
+        engine.say(text)
+        engine.runAndWait()
 
-    pygame.mixer.music.unload()
-    os.remove("temp.mp3")
+# Process commands
 
 
 def process_command(command):
-    """Process user commands"""
     command_lower = command.lower()
+    print("You said:", command)
 
-    if "open google" in command_lower:
+    # Greeting & Identity
+    if any(kw in command_lower for kw in ["hello", "hi riya"]):
+        speak("Hello sir, how can I assist you today?")
+    elif "how are you" in command_lower:
+        speak("I’m doing great, thank you for asking!")
+    elif "what is your name" in command_lower:
+        speak("My name is Riya, your personal AI girlfriend assistant.")
+    elif "who made you" in command_lower:
+        speak("I was created by a brilliant developer named Hitesh.")
+    elif "what can you do" in command_lower:
+        speak("I can search the web, play music, talk with you, and more!")
+
+    # Exit
+    elif any(kw in command_lower for kw in ["bye", "turn off", "shut down"]):
+        speak("Okay, I’m going to sleep. Say 'Riya' to wake me up again.")
+        return "sleep"
+
+    # Website actions
+    elif "open google" in command_lower:
         webbrowser.open("https://google.com")
-    elif "open facebook" in command_lower:
-        webbrowser.open("https://facebook.com")
     elif "open youtube" in command_lower:
         webbrowser.open("https://youtube.com")
+    elif "open facebook" in command_lower:
+        webbrowser.open("https://facebook.com")
     elif "open linkedin" in command_lower:
         webbrowser.open("https://linkedin.com")
+
+    # Music control
     elif command_lower.startswith("play"):
         song = command_lower.split(" ", 1)[1]
-        link = musicLibrary.music.get(song)
-        if link:
-            webbrowser.open(link)
+        if musicLibrary and hasattr(musicLibrary, "music"):
+            link = musicLibrary.music.get(song)
+            if link:
+                speak(f"Playing {song}")
+                webbrowser.open(link)
+            else:
+                speak("Sorry, I couldn't find that song.")
         else:
-            speak("Sorry, I couldn't find that song.")
+            speak("Music library not available.")
     elif "stop song" in command_lower:
-        speak("Stopping the song.")
         pyautogui.hotkey("space")
+        speak("Stopped the song.")
     elif "song play" in command_lower:
-        speak("Playing the song.")
         pyautogui.hotkey("space")
+        speak("Resuming the song.")
 
+    # AI Chat fallback
     else:
-        output = ai_process(command)
-        print(f"AI Response: {output}")
-        speak(output)
+        response = ai_process(command)
+        print("AI:", response)
+        speak(response)
 
 
+# --- Main Program ---
 if __name__ == "__main__":
-    speak("Initializing Elina... Say 'Elina' to start.")
+    speak("Initializing Riya... Say 'Riya' to start.")
 
     with sr.Microphone() as source:
         recognizer.adjust_for_ambient_noise(source)
-        print("Waiting for 'Elina' to start listening...")
+        print("Listening for wake word: 'Riya'...")
 
         while True:
             try:
-                # Listen for the wake word "Spider"
                 audio = recognizer.listen(
-                    source, timeout=5, phrase_time_limit=3)
-                wake_word = recognizer.recognize_google(audio).lower()
+                    source, timeout=5, phrase_time_limit=4)
+                wake = recognizer.recognize_google(audio).lower()
 
-                if "spider" in wake_word:
-                    speak("Yes sir, I am listening.")
-                    print("Elina activated! Listening for commands...")
-
-                    while True:  # Keep listening for commands
+                if "riya" in wake:
+                    speak("Yes sir, I’m listening.")
+                    while True:
                         try:
                             audio = recognizer.listen(source)
                             command = recognizer.recognize_google(audio)
-                            process_command(command)
+                            if process_command(command) == "sleep":
+                                break
                         except sr.UnknownValueError:
-                            pass
+                            continue
                         except Exception as e:
-                            print(f"Error: {e}")
-
+                            print("Command error:", e)
+            except sr.WaitTimeoutError:
+                continue
             except sr.UnknownValueError:
-                pass
+                continue
             except Exception as e:
-                print(f"Error: {e}")
+                print("Error:", e)
